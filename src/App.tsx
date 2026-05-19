@@ -2,9 +2,13 @@ import { Tldraw, Editor } from 'tldraw'
 import 'tldraw/tldraw.css'
 import { useCallback, useEffect, useState } from 'react'
 import { customShapes } from './shapes'
+import { QueryTool } from './shapes/QueryTool'
+import { CanvasToolbar } from './components/CanvasToolbar'
 import { loadWorkspace, autoSaveWorkspace } from './lib/workspace'
 
 const WORKSPACE_SLUG = new URLSearchParams(window.location.search).get('workspace') || 'default'
+
+const customTools = [QueryTool]
 
 export default function App() {
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -37,6 +41,10 @@ export default function App() {
       <Tldraw
         onMount={handleMount}
         shapeUtils={customShapes}
+        tools={customTools}
+        components={{
+          InFrontOfTheCanvas: CanvasToolbar,
+        }}
       />
     </div>
   )

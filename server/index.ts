@@ -27,7 +27,7 @@ async function initDuckDB() {
 
     await connection.run('INSTALL quack FROM core_nightly')
     await connection.run('LOAD quack')
-    await connection.run(`CALL quack_serve('quack:0.0.0.0:9494')`)
+    await connection.run(`CALL quack_serve('quack:localhost:9494')`)
 
     console.log('[server] DuckDB + Quack serving on port 9494')
     duckdbReady = true
