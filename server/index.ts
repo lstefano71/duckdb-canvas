@@ -17,17 +17,17 @@ await fs.mkdir(WORKSPACES_DIR, { recursive: true })
 // and start quack_serve so the browser WASM client can connect.
 
 let duckdbReady = false
+let duckdbConnection: any = null
 
 async function initDuckDB() {
   try {
-    // Dynamic import — @duckdb/node-api may not be installed yet
     const { DuckDBInstance } = await import('@duckdb/node-api')
     const instance = await DuckDBInstance.create()
-    const connection = await instance.connect()
+    duckdbConnection = await instance.connect()
 
-    await connection.run('INSTALL quack FROM core_nightly')
-    await connection.run('LOAD quack')
-    await connection.run(`CALL quack_serve('quack:localhost:9494')`)
+    await duckdbConnection.run('INSTALL quack FROM core_nightly')
+    await duckdbConnection.run('LOAD quack')
+    await duckdbConnection.run(`CALL quack_serve('quack:localhost:9494')`)
 
     console.log('[server] DuckDB + Quack serving on port 9494')
     duckdbReady = true
@@ -36,6 +36,44 @@ async function initDuckDB() {
     console.warn('[server] Running without DuckDB — workspace API still available')
   }
 }
+
+// --- Query API (REST fallback for when WASM can't use Quack directly) ---
+
+app.post('/api/query', async (req, res) => {
+  if (!duckdbReady || !duckdbConnection) {
+    res.status(503).json({ error: 'DuckDB not available' })
+    return
+  }
+
+  const { sql } = req.body
+  if (!sql || typeof sql !== 'string') {
+    res.status(400).json({ error: 'Missing or invalid "sql" field' })
+    return
+  }
+
+  try {
+    const result = await duckdbConnection.run(sql)
+    const rows = await result.getRows()
+    const columns = result.columnNames().map((name: string, i: number) => ({
+      name,
+      type: String(result.columnTypes()[i]),
+    }))
+
+    // Convert to columnar format, coercing BigInt to Number
+    const numCols = columns.length
+    const data: unknown[][] = Array.from({ length: numCols }, () => [])
+    for (const row of rows) {
+      for (let c = 0; c < numCols; c++) {
+        const val = row[c]
+        data[c].push(typeof val === 'bigint' ? Number(val) : val)
+      }
+    }
+
+    res.json({ columns, data, rowCount: data[0]?.length ?? 0 })
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || String(err) })
+  }
+})
 
 // --- Workspace API ---
 
