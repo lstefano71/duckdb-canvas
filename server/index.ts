@@ -18,6 +18,7 @@ await fs.mkdir(WORKSPACES_DIR, { recursive: true })
 
 let duckdbReady = false
 let duckdbConnection: any = null
+const QUACK_TOKEN = 'duckdb-canvas-dev'
 
 async function initDuckDB() {
   try {
@@ -27,9 +28,9 @@ async function initDuckDB() {
 
     await duckdbConnection.run('INSTALL quack FROM core_nightly')
     await duckdbConnection.run('LOAD quack')
-    await duckdbConnection.run(`CALL quack_serve('quack:localhost:9494')`)
+    await duckdbConnection.run(`CALL quack_serve('quack:localhost:9494', token := '${QUACK_TOKEN}')`)
 
-    console.log('[server] DuckDB + Quack serving on port 9494')
+    console.log('[server] DuckDB + Quack serving on port 9494 (token:', QUACK_TOKEN, ')')
     duckdbReady = true
   } catch (err) {
     console.error('[server] DuckDB/Quack init failed:', err)
@@ -137,6 +138,15 @@ app.put('/api/workspaces/:slug/draft', async (req, res) => {
   await fs.writeFile(draftPath, JSON.stringify(req.body))
 
   res.json({ ok: true })
+})
+
+// Quack token endpoint — WASM client fetches this to ATTACH with TOKEN
+app.get('/api/quack-token', (_req, res) => {
+  if (!duckdbReady) {
+    res.status(503).json({ error: 'DuckDB not ready' })
+    return
+  }
+  res.json({ token: QUACK_TOKEN, uri: 'quack:localhost:9494' })
 })
 
 // Health check

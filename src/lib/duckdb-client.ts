@@ -1,8 +1,13 @@
 import * as duckdb from '@duckdb/duckdb-wasm'
+import duckdb_wasm from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
+import mvp_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
+import duckdb_wasm_eh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
+import eh_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
 
 let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
-let initialized = false
+let wasmInitialized = false
+let wasmInitFailed = false
 let quackAvailable = false
 
 export interface QueryResult {
@@ -12,34 +17,53 @@ export interface QueryResult {
   error?: string
 }
 
-async function initDuckDB() {
-  if (initialized) return
-
-  const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles()
-  const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES)
-
-  const worker = new Worker(bundle.mainWorker!, { type: 'module' })
-  const logger = new duckdb.ConsoleLogger()
-  db = new duckdb.AsyncDuckDB(logger, worker)
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker)
-
-  conn = await db.connect()
-
-  // Try to load quack and attach remote server
-  try {
-    await conn.query(`INSTALL quack FROM core_nightly`)
-    await conn.query(`LOAD quack`)
-    await conn.query(`ATTACH 'quack:localhost:9494' AS remote`)
-    quackAvailable = true
-    console.log('[duckdb-wasm] Connected to remote via Quack')
-  } catch (err) {
-    console.warn('[duckdb-wasm] Quack not available, using REST fallback for server queries:', err)
-  }
-
-  initialized = true
+const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
+  mvp: {
+    mainModule: duckdb_wasm,
+    mainWorker: mvp_worker,
+  },
+  eh: {
+    mainModule: duckdb_wasm_eh,
+    mainWorker: eh_worker,
+  },
 }
 
-// Fallback: execute via REST API on the server when Quack isn't available in WASM
+async function initDuckDBWasm() {
+  if (wasmInitialized || wasmInitFailed) return
+
+  try {
+    const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
+    const worker = new Worker(bundle.mainWorker!, { type: 'module' })
+    const logger = new duckdb.ConsoleLogger()
+    db = new duckdb.AsyncDuckDB(logger, worker)
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker)
+
+    conn = await db.connect()
+
+    // Try to load quack and attach remote server with auth token
+    try {
+      // Fetch the auth token from the server
+      const tokenRes = await fetch('/api/quack-token')
+      if (!tokenRes.ok) throw new Error('Token endpoint not available')
+      const { token, uri } = await tokenRes.json()
+
+      await conn.query(`INSTALL quack FROM core_nightly`)
+      await conn.query(`LOAD quack`)
+      await conn.query(`ATTACH '${uri}' AS remote (TOKEN '${token}')`)
+      quackAvailable = true
+      console.log('[duckdb-wasm] Connected to remote via Quack')
+    } catch (err) {
+      console.warn('[duckdb-wasm] Quack not available:', err)
+    }
+
+    wasmInitialized = true
+  } catch (err) {
+    console.warn('[duckdb-wasm] WASM init failed, server mode will use REST:', err)
+    wasmInitFailed = true
+  }
+}
+
+// Execute via REST API on the server
 async function executeViaRest(sqlText: string): Promise<QueryResult> {
   const res = await fetch('/api/query', {
     method: 'POST',
@@ -57,21 +81,23 @@ export async function executeQuery(
   sqlText: string,
   mode: 'server' | 'local'
 ): Promise<QueryResult> {
-  await initDuckDB()
-  if (!conn) throw new Error('DuckDB not initialized')
-
-  // Server mode: try Quack first, fallback to REST
+  // Server mode: try Quack via WASM first, fallback to REST
   if (mode === 'server') {
-    if (quackAvailable) {
+    if (!wasmInitFailed && !wasmInitialized) {
+      await initDuckDBWasm()
+    }
+    if (quackAvailable && conn) {
       const effectiveSql = `FROM remote.query('${sqlText.replace(/'/g, "''")}')`
       const result = await conn.query(effectiveSql)
       return arrowToResult(result)
-    } else {
-      return executeViaRest(sqlText)
     }
+    // Fallback to REST
+    return executeViaRest(sqlText)
   }
 
-  // Local mode: run directly in WASM
+  // Local mode: must use WASM
+  await initDuckDBWasm()
+  if (!conn) throw new Error('DuckDB WASM failed to initialize')
   const result = await conn.query(sqlText)
   return arrowToResult(result)
 }

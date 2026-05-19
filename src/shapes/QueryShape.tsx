@@ -2,30 +2,17 @@ import {
   ShapeUtil,
   HTMLContainer,
   Rectangle2d,
-  TLShape,
+  TLResizeInfo,
 } from 'tldraw'
 import { QueryShapeComponent } from './QueryShapeComponent'
+import type { QueryShape, QueryShapeProps } from './types'
 
-const QUERY_TYPE = 'query'
-
-declare module 'tldraw' {
-  export interface TLGlobalShapePropsMap {
-    [QUERY_TYPE]: {
-      w: number
-      h: number
-      sql: string
-      mode: 'server' | 'local'
-      resultShapeId: string | null
-    }
-  }
-}
-
-export type QueryShape = TLShape<typeof QUERY_TYPE>
+export type { QueryShape, QueryShapeProps }
 
 export class QueryShapeUtil extends ShapeUtil<QueryShape> {
-  static override type = QUERY_TYPE
+  static override type = 'query' as const
 
-  getDefaultProps(): QueryShape['props'] {
+  getDefaultProps(): QueryShapeProps {
     return {
       w: 500,
       h: 300,
@@ -63,5 +50,14 @@ export class QueryShapeUtil extends ShapeUtil<QueryShape> {
 
   override canEdit() {
     return true
+  }
+
+  override onResize(_shape: QueryShape, info: TLResizeInfo<QueryShape>) {
+    return {
+      props: {
+        w: Math.max(200, info.initialBounds.w * info.scaleX),
+        h: Math.max(150, info.initialBounds.h * info.scaleY),
+      },
+    }
   }
 }

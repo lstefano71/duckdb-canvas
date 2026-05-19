@@ -2,36 +2,17 @@ import {
   ShapeUtil,
   HTMLContainer,
   Rectangle2d,
-  TLShape,
+  TLResizeInfo,
 } from 'tldraw'
 import { ResultShapeComponent } from './ResultShapeComponent'
+import type { ResultShape, ResultShapeProps } from './types'
 
-export type ColumnInfo = {
-  name: string
-  type: string
-}
-
-const RESULT_TYPE = 'result'
-
-declare module 'tldraw' {
-  export interface TLGlobalShapePropsMap {
-    [RESULT_TYPE]: {
-      w: number
-      h: number
-      columns: ColumnInfo[]
-      rowCount: number
-      dataKey: string | null
-      error: string | null
-    }
-  }
-}
-
-export type ResultShape = TLShape<typeof RESULT_TYPE>
+export type { ResultShape, ResultShapeProps, ColumnInfo } from './types'
 
 export class ResultShapeUtil extends ShapeUtil<ResultShape> {
-  static override type = RESULT_TYPE
+  static override type = 'result' as const
 
-  getDefaultProps(): ResultShape['props'] {
+  getDefaultProps(): ResultShapeProps {
     return {
       w: 600,
       h: 350,
@@ -66,5 +47,18 @@ export class ResultShapeUtil extends ShapeUtil<ResultShape> {
 
   override canResize() {
     return true
+  }
+
+  override canEdit() {
+    return true
+  }
+
+  override onResize(_shape: ResultShape, info: TLResizeInfo<ResultShape>) {
+    return {
+      props: {
+        w: Math.max(200, info.initialBounds.w * info.scaleX),
+        h: Math.max(150, info.initialBounds.h * info.scaleY),
+      },
+    }
   }
 }

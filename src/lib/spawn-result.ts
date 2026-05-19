@@ -1,6 +1,6 @@
 import type { Editor } from 'tldraw'
 import { createShapeId } from 'tldraw'
-import type { QueryShape } from '../shapes/QueryShape'
+import type { QueryShape, ResultShape } from '../shapes/types'
 import type { QueryResult } from './duckdb-client'
 import { storeResultData, deleteResultData } from './result-store'
 
@@ -19,11 +19,10 @@ export function spawnResultShape(
 
   if (existingResultId) {
     // Update existing result shape
-    const existing = editor.getShape(existingResultId as any)
+    const existing = editor.getShape(existingResultId as any) as ResultShape | undefined
     if (existing) {
       // Clean up old data
-      const oldProps = (existing as any).props
-      if (oldProps?.dataKey) deleteResultData(oldProps.dataKey)
+      if (existing.props?.dataKey) deleteResultData(existing.props.dataKey)
 
       editor.updateShape({
         id: existingResultId as any,
@@ -59,12 +58,18 @@ export function spawnResultShape(
     },
   })
 
-  // Create an arrow shape
+  // Create a curved arrow shape
   editor.createShape({
     id: arrowId,
     type: 'arrow',
     x: queryShape.x + queryShape.props.w,
     y: queryShape.y + queryShape.props.h / 2,
+    props: {
+      kind: 'arc',
+      bend: -30,
+      arrowheadStart: 'none',
+      arrowheadEnd: 'arrow',
+    },
   })
 
   // Bind the arrow to both shapes
@@ -96,7 +101,7 @@ export function spawnResultShape(
   ])
 
   // Link the query to its result
-  editor.updateShape({
+  editor.updateShape<QueryShape>({
     id: queryShape.id,
     type: 'query',
     props: { resultShapeId: resultId as unknown as string },

@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DuckDB Canvas</title>
+    <style>
+      /* Ensure tldraw UI uses sans-serif even if CDN fonts fail */
+      .tl-container {
+        font-family: var(--tl-font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

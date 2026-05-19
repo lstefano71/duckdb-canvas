@@ -1,33 +1,14 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef } from 'react'
+import { useCallback, useRef } from 'react'
+import { useIsEditing } from 'tldraw'
 import { getResultData } from '../lib/result-store'
-import type { ResultShape } from './ResultShape'
+import type { ResultShape } from './types'
 
 export function ResultShapeComponent({ shape }: { shape: ResultShape }) {
+  const isEditing = useIsEditing(shape.id)
   const parentRef = useRef<HTMLDivElement>(null)
-
-  if (shape.props.error) {
-    return (
-      <div style={{
-        width: shape.props.w,
-        height: shape.props.h,
-        background: '#1e1e2e',
-        borderRadius: 8,
-        border: '1px solid #f38ba8',
-        padding: 12,
-        color: '#f38ba8',
-        fontFamily: 'monospace',
-        fontSize: 12,
-        overflow: 'auto',
-      }}>
-        <strong>Error</strong>
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{shape.props.error}</pre>
-      </div>
-    )
-  }
-
-  const data = shape.props.dataKey ? getResultData(shape.props.dataKey) : null
   const { columns, rowCount } = shape.props
+  const data = shape.props.dataKey ? getResultData(shape.props.dataKey) : null
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
@@ -36,45 +17,86 @@ export function ResultShapeComponent({ shape }: { shape: ResultShape }) {
     overscan: 10,
   })
 
+  // Allow scroll interaction when in edit mode
+  const stopPropagation = useCallback((e: React.PointerEvent) => {
+    if (isEditing) e.stopPropagation()
+  }, [isEditing])
+
+  if (shape.props.error) {
+    return (
+      <div style={{
+        width: shape.props.w,
+        height: shape.props.h,
+        background: '#fff5f5',
+        borderRadius: 8,
+        border: '1px solid #ffc9c9',
+        padding: 12,
+        color: '#c92a2a',
+        fontFamily: 'monospace',
+        fontSize: 12,
+        overflow: 'auto',
+        pointerEvents: isEditing ? 'all' : 'none',
+      }}
+        onPointerDown={stopPropagation}
+        onPointerMove={stopPropagation}
+        onPointerUp={stopPropagation}
+      >
+        <strong>Error</strong>
+        <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{shape.props.error}</pre>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       width: shape.props.w,
       height: shape.props.h,
-      background: '#1e1e2e',
+      background: '#ffffff',
       borderRadius: 8,
-      border: '1px solid #45475a',
+      border: '1px solid #dee2e6',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-    }}>
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+      pointerEvents: isEditing ? 'all' : 'none',
+    }}
+      onPointerDown={stopPropagation}
+      onPointerMove={stopPropagation}
+      onPointerUp={stopPropagation}
+    >
       {/* Header bar */}
       <div style={{
         padding: '6px 10px',
-        background: '#313244',
-        borderBottom: '1px solid #45475a',
-        color: '#a6adc8',
+        background: '#f8f9fa',
+        borderBottom: '1px solid #dee2e6',
+        color: '#495057',
         fontSize: 11,
       }}>
         {rowCount.toLocaleString()} rows × {columns.length} columns
+        {!isEditing && <span style={{ color: '#adb5bd', marginLeft: 8 }}>(double-click to scroll)</span>}
       </div>
       {/* Column headers */}
       <div style={{
         display: 'flex',
-        borderBottom: '1px solid #45475a',
-        background: '#181825',
-        minWidth: 'fit-content',
+        borderBottom: '1px solid #dee2e6',
+        background: '#f1f3f5',
       }}>
         {columns.map((col) => (
           <div key={col.name} style={{
-            minWidth: 120,
+            flex: '1 1 0',
+            width: 0,
+            minWidth: 60,
             padding: '4px 8px',
-            color: '#cdd6f4',
+            color: '#212529',
             fontSize: 11,
             fontWeight: 600,
-            borderRight: '1px solid #313244',
+            borderRight: '1px solid #e9ecef',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}>
             {col.name}
-            <span style={{ color: '#6c7086', fontWeight: 400, marginLeft: 4 }}>
+            <span style={{ color: '#868e96', fontWeight: 400, marginLeft: 4 }}>
               {col.type}
             </span>
           </div>
@@ -98,17 +120,19 @@ export function ResultShapeComponent({ shape }: { shape: ResultShape }) {
                 height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
                 display: 'flex',
-                borderBottom: '1px solid #313244',
+                borderBottom: '1px solid #f1f3f5',
               }}
             >
               {columns.map((col, colIdx) => (
                 <div key={col.name} style={{
-                  minWidth: 120,
+                  flex: '1 1 0',
+                  width: 0,
+                  minWidth: 60,
                   padding: '4px 8px',
-                  color: '#cdd6f4',
+                  color: '#212529',
                   fontSize: 11,
                   fontFamily: 'monospace',
-                  borderRight: '1px solid #313244',
+                  borderRight: '1px solid #f1f3f5',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
