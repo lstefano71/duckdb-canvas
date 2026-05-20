@@ -1,4 +1,4 @@
-import { useEditor } from 'tldraw'
+import { useEditor, useValue } from 'tldraw'
 import { useCallback, useRef, useEffect, useState } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { javascript } from '@codemirror/lang-javascript'
@@ -172,10 +172,12 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
     })
   }, [editor, shape.id, shape.props.paused])
 
-  // Resolve source QueryCell's dataVersion for reactivity
-  const sourceShape = shape.props.sourceShapeId
-    ? editor.getShape<QueryCellShape>(shape.props.sourceShapeId)
-    : null
+  // Reactively subscribe to source QueryCell changes
+  const sourceShape = useValue('source-shape', () => {
+    if (!shape.props.sourceShapeId) return null
+    return editor.getShape<QueryCellShape>(shape.props.sourceShapeId) ?? null
+  }, [editor, shape.props.sourceShapeId])
+
   const sourceViewName = sourceShape?.props.viewName ?? null
   const sourceDataVersion = sourceShape?.props.dataVersion ?? 0
   const sourceDeleted = shape.props.sourceShapeId !== null && !sourceShape

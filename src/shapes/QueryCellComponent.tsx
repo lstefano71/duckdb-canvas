@@ -81,8 +81,9 @@ function QueryPanel({ shape, width, height }: {
           '.cm-scroller': { overflow: 'auto' },
           '.cm-gutters': { backgroundColor: '#f8f9fa', borderRight: '1px solid #dee2e6' },
           '.cm-activeLineGutter': { backgroundColor: '#e9ecef' },
-          '.cm-activeLine': { backgroundColor: '#f1f3f5' },
-          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#d0e8ff !important' },
+          '.cm-activeLine': { backgroundColor: 'transparent' },
+          '.cm-selectionBackground': { backgroundColor: '#accef7 !important' },
+          '&.cm-focused .cm-selectionBackground': { backgroundColor: '#accef7 !important' },
           '&.cm-focused .cm-cursor': { borderLeftColor: '#333' },
         }),
         Prec.highest(keymap.of([{

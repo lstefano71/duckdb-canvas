@@ -29,9 +29,9 @@ async function initDuckDB() {
 
     await duckdbConnection.run('INSTALL quack FROM core_nightly')
     await duckdbConnection.run('LOAD quack')
-    await duckdbConnection.run(`CALL quack_serve('quack:localhost:9494', token := '${QUACK_TOKEN}')`)
+    await duckdbConnection.run(`CALL quack_serve('quack:127.0.0.1:9494', token := '${QUACK_TOKEN}')`)
 
-    console.log('[server] DuckDB + Quack serving on port 9494 (token:', QUACK_TOKEN, ')')
+    console.log('[server] DuckDB + Quack serving on 127.0.0.1:9494 (token:', QUACK_TOKEN, ')')
     duckdbReady = true
   } catch (err) {
     console.error('[server] DuckDB/Quack init failed:', err)
@@ -138,7 +138,7 @@ app.get('/api/quack-token', (_req, res) => {
     res.status(503).json({ error: 'DuckDB not ready' })
     return
   }
-  res.json({ token: QUACK_TOKEN, uri: 'quack:localhost:9494' })
+  res.json({ token: QUACK_TOKEN, uri: 'quack:127.0.0.1:9494' })
 })
 
 app.get('/api/health', (_req, res) => {
@@ -153,10 +153,18 @@ const PORT = 3000
 const httpServer = createHttpServer(app)
 
 if (isDev) {
+  const { createLogger } = await import('vite')
+  const logger = createLogger()
+  const origWarn = logger.warn.bind(logger)
+  logger.warn = (msg, opts) => {
+    if (msg.includes('outside its package')) return
+    origWarn(msg, opts)
+  }
   const vite = await createViteServer({
     root: ROOT,
     server: { middlewareMode: true, hmr: { server: httpServer } },
     appType: 'spa',
+    customLogger: logger,
   })
   app.use(vite.middlewares)
 } else {
