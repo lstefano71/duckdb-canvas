@@ -214,20 +214,22 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
 
     try {
       const { data: columnar, columns } = await getColumnarData(sourceViewName)
+      const rowCount = columns.length > 0 ? (columnar[columns[0]] as ArrayLike<unknown>).length : 0
 
       // Build row-oriented array for Plot compatibility
-      const rowCount = columns.length > 0 ? (columnar[columns[0]] as ArrayLike<unknown>).length : 0
-      const data: Record<string, unknown>[] = new Array(rowCount)
+      // For 150k rows this is ~30MB momentary allocation — acceptable.
+      // For zero-copy perf, use accessor functions: {x: (_, i) => data.colName[i]}
+      const rows: Record<string, unknown>[] = new Array(rowCount)
       for (let i = 0; i < rowCount; i++) {
         const row: Record<string, unknown> = {}
         for (const col of columns) {
           row[col] = (columnar[col] as ArrayLike<unknown>)[i]
         }
-        data[i] = row
+        rows[i] = row
       }
 
-      const fn = new Function('data', 'columnar', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
-      const node = fn(data, columnar, columns, chartWidth, chartHeight, Plot, d3)
+      const fn = new Function('data', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
+      const node = fn(rows, columns, chartWidth, chartHeight, Plot, d3)
 
       if (node instanceof Node) {
         container.innerHTML = ''
