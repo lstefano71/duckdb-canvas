@@ -216,20 +216,34 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
       const { data: columnar, columns } = await getColumnarData(sourceViewName)
       const rowCount = columns.length > 0 ? (columnar[columns[0]] as ArrayLike<unknown>).length : 0
 
-      // Build row-oriented array for Plot compatibility
-      // For 150k rows this is ~30MB momentary allocation — acceptable.
-      // For zero-copy perf, use accessor functions: {x: (_, i) => data.colName[i]}
-      const rows: Record<string, unknown>[] = new Array(rowCount)
-      for (let i = 0; i < rowCount; i++) {
-        const row: Record<string, unknown> = {}
-        for (const col of columns) {
-          row[col] = (columnar[col] as ArrayLike<unknown>)[i]
-        }
-        rows[i] = row
-      }
+      // Proxy that presents columnar typed arrays as a virtual array of row objects.
+      // Row objects are built lazily on index access — no upfront 150k allocation.
+      // Array.isArray returns true because target is a real array.
+      const target = new Array(rowCount)
+      const data = new Proxy(target, {
+        get(t, prop, receiver) {
+          if (prop === 'length') return rowCount
+          if (prop === Symbol.iterator) {
+            return function* () {
+              for (let i = 0; i < rowCount; i++) yield receiver[i]
+            }
+          }
+          if (typeof prop === 'string') {
+            const idx = Number(prop)
+            if (Number.isInteger(idx) && idx >= 0 && idx < rowCount) {
+              const row: Record<string, unknown> = {}
+              for (const col of columns) {
+                row[col] = (columnar[col] as ArrayLike<unknown>)[idx]
+              }
+              return row
+            }
+          }
+          return Reflect.get(t, prop, receiver)
+        },
+      })
 
       const fn = new Function('data', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
-      const node = fn(rows, columns, chartWidth, chartHeight, Plot, d3)
+      const node = fn(data, columns, chartWidth, chartHeight, Plot, d3)
 
       if (node instanceof Node) {
         container.innerHTML = ''
