@@ -15,7 +15,6 @@ export class QueryTool extends StateNode {
     })
 
     this.editor.select(id)
-    this.editor.setEditingShape(id)
     this.editor.setCurrentTool('select')
   }
 }

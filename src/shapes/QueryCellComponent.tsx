@@ -9,14 +9,14 @@ import { datatable } from '../vendor/quak'
 import { ensureWasmReady, executeAndMaterialize } from '../lib/duckdb-client'
 import type { QueryCellShape } from './types'
 
+const stopProp = (e: React.PointerEvent) => e.stopPropagation()
+
 export function QueryCellComponent({ shape }: { shape: QueryCellShape }) {
   const { queryVisible, splitRatio, w, h } = shape.props
 
-  const dragBarHeight = 20
   // Panel widths
   const queryWidth = queryVisible ? Math.round(w * splitRatio) : 0
   const resultWidth = queryVisible ? w - queryWidth : w
-  const contentHeight = h - dragBarHeight
 
   return (
     <div
@@ -24,7 +24,6 @@ export function QueryCellComponent({ shape }: { shape: QueryCellShape }) {
         width: w,
         height: h,
         display: 'flex',
-        flexDirection: 'column',
         borderRadius: 8,
         overflow: 'hidden',
         border: '1px solid #dee2e6',
@@ -33,44 +32,25 @@ export function QueryCellComponent({ shape }: { shape: QueryCellShape }) {
         pointerEvents: 'all',
       }}
     >
-      {/* Drag handle — does NOT stop propagation so tldraw can move */}
-      <div
-        style={{
-          height: dragBarHeight,
-          flexShrink: 0,
-          background: '#f1f3f5',
-          borderBottom: '1px solid #dee2e6',
-          cursor: 'grab',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          userSelect: 'none',
-        }}
-      >
-        <span style={{ color: '#adb5bd', fontSize: 10, letterSpacing: 2 }}>⋯⋯⋯</span>
-      </div>
-      {/* Content row */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* Query Panel */}
-        {queryVisible && (
-          <QueryPanel
-            shape={shape}
-            width={queryWidth}
-            height={contentHeight}
-          />
-        )}
-        {/* Draggable Divider */}
-        {queryVisible && (
-          <DividerHandle shape={shape} />
-        )}
-        {/* Result Panel */}
-        <ResultPanel
+      {/* Query Panel */}
+      {queryVisible && (
+        <QueryPanel
           shape={shape}
-          width={resultWidth}
-          height={contentHeight}
-          showExpandButton={!queryVisible}
+          width={queryWidth}
+          height={h}
         />
-      </div>
+      )}
+      {/* Draggable Divider */}
+      {queryVisible && (
+        <DividerHandle shape={shape} />
+      )}
+      {/* Result Panel */}
+      <ResultPanel
+        shape={shape}
+        width={resultWidth}
+        height={h}
+        showExpandButton={!queryVisible}
+      />
     </div>
   )
 }
@@ -189,8 +169,8 @@ function QueryPanel({ shape, width, height }: {
   return (
     <div
       style={{ width, height, display: 'flex', flexDirection: 'column', flexShrink: 0 }}
-      onPointerDown={(e) => e.stopPropagation()}
     >
+      {/* Header — no stopPropagation so tldraw can drag from here */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -199,20 +179,30 @@ function QueryPanel({ shape, width, height }: {
         background: '#f8f9fa',
         borderBottom: '1px solid #dee2e6',
         flexShrink: 0,
+        cursor: 'grab',
       }}>
-        <button onClick={toggleMode} style={toolbarBtnStyle(mode === 'server' ? '#d0ebff' : '#d3f9d8')}>
+        <button onPointerDown={stopProp} onClick={toggleMode} style={toolbarBtnStyle(mode === 'server' ? '#d0ebff' : '#d3f9d8')}>
           {mode === 'server' ? '🖥' : '🌐'}
         </button>
-        <button onClick={handleRun} disabled={running} style={toolbarBtnStyle(running ? '#fff3bf' : '#e7f5ff')}>
+        <button onPointerDown={stopProp} onClick={handleRun} disabled={running} style={toolbarBtnStyle(running ? '#fff3bf' : '#e7f5ff')}>
           {running ? '⏳' : '▶'}
         </button>
         <span style={{ flex: 1 }} />
-        <button onClick={hideQuery} style={toolbarBtnStyle('#f1f3f5')} title="Hide query">
+        <button onPointerDown={stopProp} onClick={hideQuery} style={toolbarBtnStyle('#f1f3f5')} title="Hide query">
           «
         </button>
       </div>
-      {/* CodeMirror */}
-      <div ref={editorRef} style={{ flex: 1, overflow: 'hidden' }} />
+      {/* CodeMirror — stops propagation for typing */}
+      <div
+        ref={editorRef}
+        style={{ flex: 1, overflow: 'hidden' }}
+        onPointerDown={(e) => {
+          if (!editor.getSelectedShapeIds().includes(shape.id)) {
+            editor.select(shape.id)
+          }
+          e.stopPropagation()
+        }}
+      />
     </div>
   )
 }
@@ -326,8 +316,8 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
   return (
     <div
       style={{ width, height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-      onPointerDown={(e) => e.stopPropagation()}
     >
+      {/* Header — no stopPropagation so tldraw can drag from here */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -337,9 +327,10 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
         borderBottom: '1px solid #dee2e6',
         height: headerHeight,
         flexShrink: 0,
+        cursor: 'grab',
       }}>
         {showExpandButton && (
-          <button onClick={showQuery} style={toolbarBtnStyle('#f1f3f5')} title="Show query">
+          <button onPointerDown={stopProp} onClick={showQuery} style={toolbarBtnStyle('#f1f3f5')} title="Show query">
             »
           </button>
         )}
@@ -350,22 +341,30 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
         </span>
         <span style={{ flex: 1 }} />
         {shape.props.viewName && (
-          <button onClick={handleRefresh} style={toolbarBtnStyle('#f1f3f5')} title="Refresh">
+          <button onPointerDown={stopProp} onClick={handleRefresh} style={toolbarBtnStyle('#f1f3f5')} title="Refresh">
             ↻
           </button>
         )}
       </div>
       {/* Error display */}
       {(shape.props.error || localError) && (
-        <div style={{
-          padding: 12,
-          color: '#c92a2a',
-          fontFamily: 'monospace',
-          fontSize: 11,
-          background: '#fff5f5',
-          overflow: 'auto',
-          flex: 1,
-        }}>
+        <div
+          style={{
+            padding: 12,
+            color: '#c92a2a',
+            fontFamily: 'monospace',
+            fontSize: 11,
+            background: '#fff5f5',
+            overflow: 'auto',
+            flex: 1,
+          }}
+          onPointerDown={(e) => {
+            if (!editor.getSelectedShapeIds().includes(shape.id)) {
+              editor.select(shape.id)
+            }
+            e.stopPropagation()
+          }}
+        >
           <strong>Error</strong>
           <pre style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>
             {shape.props.error || localError}
@@ -374,7 +373,16 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
       )}
       {/* Quak datatable */}
       {!shape.props.error && !localError && (
-        <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
+        <div
+          ref={containerRef}
+          style={{ flex: 1, overflow: 'hidden' }}
+          onPointerDown={(e) => {
+            if (!editor.getSelectedShapeIds().includes(shape.id)) {
+              editor.select(shape.id)
+            }
+            e.stopPropagation()
+          }}
+        />
       )}
     </div>
   )

@@ -21,7 +21,6 @@ export class QueryCellUtil extends ShapeUtil<QueryCellShape> {
     }
   }
 
-  override canEdit() { return true }
   override canResize() { return true }
   override isAspectRatioLocked() { return false }
 
