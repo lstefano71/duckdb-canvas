@@ -1,4 +1,4 @@
-import { useEditor, useIsEditing } from 'tldraw'
+import { useEditor } from 'tldraw'
 import { useCallback, useRef, useEffect, useState } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
@@ -10,31 +10,13 @@ import { ensureWasmReady, executeAndMaterialize } from '../lib/duckdb-client'
 import type { QueryCellShape } from './types'
 
 export function QueryCellComponent({ shape }: { shape: QueryCellShape }) {
-  const editor = useEditor()
-  const isEditing = useIsEditing(shape.id)
   const { queryVisible, splitRatio, w, h } = shape.props
 
-  // Auto-enter edit mode on select
-  useEffect(() => {
-    const unsub = editor.store.listen(
-      () => {
-        const selected = editor.getSelectedShapeIds()
-        if (selected.includes(shape.id) && !editor.getEditingShapeId()) {
-          editor.setEditingShape(shape.id)
-        }
-      },
-      { source: 'user', scope: 'session' }
-    )
-    return unsub
-  }, [editor, shape.id])
-
+  const dragBarHeight = 20
   // Panel widths
   const queryWidth = queryVisible ? Math.round(w * splitRatio) : 0
   const resultWidth = queryVisible ? w - queryWidth : w
-
-  const stopPropagation = useCallback((e: React.PointerEvent) => {
-    if (isEditing) e.stopPropagation()
-  }, [isEditing])
+  const contentHeight = h - dragBarHeight
 
   return (
     <div
@@ -42,36 +24,53 @@ export function QueryCellComponent({ shape }: { shape: QueryCellShape }) {
         width: w,
         height: h,
         display: 'flex',
+        flexDirection: 'column',
         borderRadius: 8,
         overflow: 'hidden',
         border: '1px solid #dee2e6',
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         background: '#ffffff',
-        pointerEvents: isEditing ? 'all' : 'none',
+        pointerEvents: 'all',
       }}
-      onPointerDown={stopPropagation}
-      onPointerMove={stopPropagation}
-      onPointerUp={stopPropagation}
     >
-      {/* Query Panel */}
-      {queryVisible && (
-        <QueryPanel
+      {/* Drag handle — does NOT stop propagation so tldraw can move */}
+      <div
+        style={{
+          height: dragBarHeight,
+          flexShrink: 0,
+          background: '#f1f3f5',
+          borderBottom: '1px solid #dee2e6',
+          cursor: 'grab',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ color: '#adb5bd', fontSize: 10, letterSpacing: 2 }}>⋯⋯⋯</span>
+      </div>
+      {/* Content row */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* Query Panel */}
+        {queryVisible && (
+          <QueryPanel
+            shape={shape}
+            width={queryWidth}
+            height={contentHeight}
+          />
+        )}
+        {/* Draggable Divider */}
+        {queryVisible && (
+          <DividerHandle shape={shape} />
+        )}
+        {/* Result Panel */}
+        <ResultPanel
           shape={shape}
-          width={queryWidth}
-          height={h}
+          width={resultWidth}
+          height={contentHeight}
+          showExpandButton={!queryVisible}
         />
-      )}
-      {/* Draggable Divider */}
-      {queryVisible && (
-        <DividerHandle shape={shape} />
-      )}
-      {/* Result Panel */}
-      <ResultPanel
-        shape={shape}
-        width={resultWidth}
-        height={h}
-        showExpandButton={!queryVisible}
-      />
+      </div>
     </div>
   )
 }
@@ -188,8 +187,10 @@ function QueryPanel({ shape, width, height }: {
   }, [editor, shape.id])
 
   return (
-    <div style={{ width, height, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-      {/* Toolbar */}
+    <div
+      style={{ width, height, display: 'flex', flexDirection: 'column', flexShrink: 0 }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -323,8 +324,10 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
   const headerHeight = 32
 
   return (
-    <div style={{ width, height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Result header */}
+    <div
+      style={{ width, height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       <div style={{
         display: 'flex',
         alignItems: 'center',
