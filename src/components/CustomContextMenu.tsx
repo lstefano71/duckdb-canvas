@@ -6,9 +6,6 @@ import {
   TldrawUiMenuGroup,
   TldrawUiMenuItem,
 } from 'tldraw'
-import { autoSaveWorkspace } from '../lib/workspace'
-
-const WORKSPACE_SLUG = new URLSearchParams(window.location.search).get('workspace') || 'default'
 
 // Work around React types version mismatch
 const MenuGroup = TldrawUiMenuGroup as any
@@ -41,20 +38,6 @@ function CanvasMenuItems() {
             y,
           })
           editor.select(id)
-        }}
-        readonlyOk
-      />
-      <MenuItem
-        id="save-workspace"
-        label="💾 Save"
-        onSelect={() => {
-          const snapshot = editor.store.getStoreSnapshot()
-          autoSaveWorkspace(WORKSPACE_SLUG, snapshot)
-          fetch(`/api/workspaces/${encodeURIComponent(WORKSPACE_SLUG)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(snapshot),
-          })
         }}
         readonlyOk
       />

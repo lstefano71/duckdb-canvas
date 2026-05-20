@@ -1,45 +1,30 @@
-import { Tldraw, Editor } from 'tldraw'
+import { Tldraw, inlineBase64AssetStore } from 'tldraw'
+import { useSync } from '@tldraw/sync'
 import 'tldraw/tldraw.css'
-import { useCallback, useEffect, useState } from 'react'
 import { customShapes } from './shapes'
 import { QueryTool } from './shapes/QueryTool'
-import { loadWorkspace, autoSaveWorkspace } from './lib/workspace'
 import { CustomContextMenu } from './components/CustomContextMenu'
 
 const WORKSPACE_SLUG = new URLSearchParams(window.location.search).get('workspace') || 'default'
 
 const customTools = [QueryTool]
 
+function getSyncUri() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/sync/${WORKSPACE_SLUG}`
+}
+
 export default function App() {
-  const [editor, setEditor] = useState<Editor | null>(null)
-
-  const handleMount = useCallback((ed: Editor) => {
-    setEditor(ed)
-  }, [])
-
-  // Load workspace on mount
-  useEffect(() => {
-    if (!editor) return
-    loadWorkspace(WORKSPACE_SLUG).then((snapshot) => {
-      if (snapshot) {
-        editor.store.loadStoreSnapshot(snapshot)
-      }
-    })
-  }, [editor])
-
-  // Auto-save on changes
-  useEffect(() => {
-    if (!editor) return
-    const unsub = editor.store.listen(() => {
-      autoSaveWorkspace(WORKSPACE_SLUG, editor.store.getStoreSnapshot())
-    }, { scope: 'document', source: 'user' })
-    return unsub
-  }, [editor])
+  const store = useSync({
+    uri: getSyncUri(),
+    assets: inlineBase64AssetStore,
+    shapeUtils: customShapes,
+  })
 
   return (
     <div style={{ position: 'fixed', inset: 0 }}>
       <Tldraw
-        onMount={handleMount}
+        store={store}
         shapeUtils={customShapes}
         tools={customTools}
         components={{

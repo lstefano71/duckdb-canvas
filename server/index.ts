@@ -78,59 +78,9 @@ app.post('/api/query', async (req, res) => {
 
 // --- Workspace API ---
 
-app.get('/api/workspaces', async (_req, res) => {
-  try {
-    const entries = await fs.readdir(WORKSPACES_DIR, { withFileTypes: true })
-    const slugs = entries.filter((e) => e.isDirectory()).map((e) => e.name)
-    res.json(slugs)
-  } catch {
-    res.json([])
-  }
-})
-
-app.get('/api/workspaces/:slug', async (req, res) => {
-  const dir = path.join(WORKSPACES_DIR, req.params.slug)
-  const draftPath = path.join(dir, 'canvas.draft.json')
-  const savedPath = path.join(dir, 'canvas.json')
-
-  try {
-    const draft = await fs.readFile(draftPath, 'utf-8').catch(() => null)
-    if (draft) {
-      res.json(JSON.parse(draft))
-      return
-    }
-    const saved = await fs.readFile(savedPath, 'utf-8').catch(() => null)
-    if (saved) {
-      res.json(JSON.parse(saved))
-      return
-    }
-    res.status(404).json({ error: 'Workspace not found' })
-  } catch {
-    res.status(500).json({ error: 'Failed to load workspace' })
-  }
-})
-
-app.put('/api/workspaces/:slug', async (req, res) => {
-  const dir = path.join(WORKSPACES_DIR, req.params.slug)
-  await fs.mkdir(dir, { recursive: true })
-
-  const savedPath = path.join(dir, 'canvas.json')
-  const draftPath = path.join(dir, 'canvas.draft.json')
-
-  await fs.writeFile(savedPath, JSON.stringify(req.body, null, 2))
-  await fs.rm(draftPath, { force: true })
-
-  res.json({ ok: true })
-})
-
-app.put('/api/workspaces/:slug/draft', async (req, res) => {
-  const dir = path.join(WORKSPACES_DIR, req.params.slug)
-  await fs.mkdir(dir, { recursive: true })
-
-  const draftPath = path.join(dir, 'canvas.draft.json')
-  await fs.writeFile(draftPath, JSON.stringify(req.body))
-
-  res.json({ ok: true })
+app.get('/api/workspaces', (_req, res) => {
+  // Return currently active rooms (rooms are created on first connect)
+  res.json([...rooms.keys()])
 })
 
 app.get('/api/quack-token', (_req, res) => {
@@ -148,9 +98,63 @@ app.get('/api/health', (_req, res) => {
 // --- Vite dev server as middleware (HMR) or static files in production ---
 
 import { createServer as createHttpServer } from 'http'
+import { WebSocketServer, WebSocket } from 'ws'
+import Database from 'better-sqlite3'
+import { TLSocketRoom, NodeSqliteWrapper, SQLiteSyncStorage } from '@tldraw/sync-core'
 
 const PORT = 3000
 const httpServer = createHttpServer(app)
+
+// --- tldraw Sync Rooms ---
+
+const ROOMS_DB_PATH = path.join(ROOT, 'workspaces', 'sync-rooms.db')
+await fs.mkdir(path.join(ROOT, 'workspaces'), { recursive: true })
+
+const rooms = new Map<string, TLSocketRoom>()
+
+function getOrCreateRoom(slug: string): TLSocketRoom {
+  let room = rooms.get(slug)
+  if (room) return room
+
+  const db = new Database(ROOMS_DB_PATH)
+  const sqlWrapper = new NodeSqliteWrapper(db, { tablePrefix: `room_${slug.replace(/[^a-z0-9_]/gi, '_')}_` })
+  const storage = new SQLiteSyncStorage({ sql: sqlWrapper })
+
+  room = new TLSocketRoom({
+    storage,
+    onSessionRemoved(_room, { numSessionsRemaining }) {
+      if (numSessionsRemaining === 0) {
+        console.log(`[sync] Room "${slug}" has no sessions, keeping alive for reconnections`)
+      }
+    },
+  })
+  rooms.set(slug, room)
+  console.log(`[sync] Created room "${slug}"`)
+  return room
+}
+
+const wss = new WebSocketServer({ noServer: true })
+
+httpServer.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url!, `http://${req.headers.host}`)
+
+  // Only handle /sync/:slug paths
+  const match = url.pathname.match(/^\/sync\/([^/]+)$/)
+  if (!match) {
+    // Let Vite HMR handle its own upgrade
+    return
+  }
+
+  const slug = match[1]
+  const sessionId = url.searchParams.get('sessionId') || crypto.randomUUID()
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    const room = getOrCreateRoom(slug)
+    room.handleSocketConnect({ sessionId, socket: ws as unknown as import('@tldraw/sync-core').WebSocketMinimal })
+  })
+})
+
+// --- Start ---
 
 if (isDev) {
   const { createLogger } = await import('vite')
@@ -166,6 +170,7 @@ if (isDev) {
     appType: 'spa',
     customLogger: logger,
   })
+
   app.use(vite.middlewares)
 } else {
   const distPath = path.join(ROOT, 'dist')
@@ -175,8 +180,8 @@ if (isDev) {
   })
 }
 
-httpServer.listen(PORT, () => {
-  console.log(`[duckdb-canvas] ${isDev ? 'Dev' : 'Production'} server on http://localhost:${PORT}`)
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`[duckdb-canvas] ${isDev ? 'Dev' : 'Production'} server on http://0.0.0.0:${PORT}`)
 })
 
 // Init DuckDB in background (don't block server startup)
