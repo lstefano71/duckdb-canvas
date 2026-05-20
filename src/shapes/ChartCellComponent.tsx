@@ -213,10 +213,21 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
     if (!container) return
 
     try {
-      const { data, columns } = await getColumnarData(sourceViewName)
+      const { data: columnar, columns } = await getColumnarData(sourceViewName)
 
-      const fn = new Function('data', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
-      const node = fn(data, columns, chartWidth, chartHeight, Plot, d3)
+      // Build row-oriented array for Plot compatibility
+      const rowCount = columns.length > 0 ? (columnar[columns[0]] as ArrayLike<unknown>).length : 0
+      const data: Record<string, unknown>[] = new Array(rowCount)
+      for (let i = 0; i < rowCount; i++) {
+        const row: Record<string, unknown> = {}
+        for (const col of columns) {
+          row[col] = (columnar[col] as ArrayLike<unknown>)[i]
+        }
+        data[i] = row
+      }
+
+      const fn = new Function('data', 'columnar', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
+      const node = fn(data, columnar, columns, chartWidth, chartHeight, Plot, d3)
 
       if (node instanceof Node) {
         container.innerHTML = ''
