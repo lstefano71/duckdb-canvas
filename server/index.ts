@@ -101,11 +101,21 @@ import { createServer as createHttpServer } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
 import Database from 'better-sqlite3'
 import { TLSocketRoom, NodeSqliteWrapper, SQLiteSyncStorage } from '@tldraw/sync-core'
+import { createTLSchema, defaultShapeSchemas, defaultBindingSchemas } from '@tldraw/tlschema'
 
 const PORT = 3000
 const httpServer = createHttpServer(app)
 
 // --- tldraw Sync Rooms ---
+
+const syncSchema = createTLSchema({
+  shapes: {
+    ...defaultShapeSchemas,
+    querycell: {},
+    chartcell: {},
+  },
+  bindings: defaultBindingSchemas,
+})
 
 const ROOMS_DB_PATH = path.join(ROOT, 'workspaces', 'sync-rooms.db')
 await fs.mkdir(path.join(ROOT, 'workspaces'), { recursive: true })
@@ -121,6 +131,7 @@ function getOrCreateRoom(slug: string): TLSocketRoom {
   const storage = new SQLiteSyncStorage({ sql: sqlWrapper })
 
   room = new TLSocketRoom({
+    schema: syncSchema,
     storage,
     onSessionRemoved(_room, { numSessionsRemaining }) {
       if (numSessionsRemaining === 0) {
