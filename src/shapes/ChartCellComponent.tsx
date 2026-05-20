@@ -240,6 +240,15 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
           }
           return Reflect.get(t, prop, receiver)
         },
+        // Array methods like .map/.filter check "i in array" before accessing —
+        // must report all valid indices as present.
+        has(_t, prop) {
+          if (typeof prop === 'string') {
+            const idx = Number(prop)
+            if (Number.isInteger(idx) && idx >= 0 && idx < rowCount) return true
+          }
+          return prop in target
+        },
       })
 
       const fn = new Function('data', 'columns', 'width', 'height', 'Plot', 'd3', shape.props.code)
