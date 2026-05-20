@@ -1,4 +1,4 @@
-import { Tldraw, inlineBase64AssetStore } from 'tldraw'
+import { Tldraw, inlineBase64AssetStore, defaultShapeUtils, defaultBindingUtils } from 'tldraw'
 import { useSync } from '@tldraw/sync'
 import 'tldraw/tldraw.css'
 import { customShapes } from './shapes'
@@ -18,7 +18,8 @@ export default function App() {
   const store = useSync({
     uri: getSyncUri(),
     assets: inlineBase64AssetStore,
-    shapeUtils: customShapes,
+    shapeUtils: [...defaultShapeUtils, ...customShapes],
+    bindingUtils: [...defaultBindingUtils],
   })
 
   return (
