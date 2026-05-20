@@ -8,18 +8,17 @@ import { CustomContextMenu } from './components/CustomContextMenu'
 const WORKSPACE_SLUG = new URLSearchParams(window.location.search).get('workspace') || 'default'
 
 const customTools = [QueryTool]
+const allShapeUtils = [...defaultShapeUtils, ...customShapes]
+const allBindingUtils = [...defaultBindingUtils]
 
-function getSyncUri() {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${proto}//${window.location.host}/sync/${WORKSPACE_SLUG}`
-}
+const syncUri = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/sync/${WORKSPACE_SLUG}`
 
 export default function App() {
   const store = useSync({
-    uri: getSyncUri(),
+    uri: syncUri,
     assets: inlineBase64AssetStore,
-    shapeUtils: [...defaultShapeUtils, ...customShapes],
-    bindingUtils: [...defaultBindingUtils],
+    shapeUtils: allShapeUtils,
+    bindingUtils: allBindingUtils,
   })
 
   return (
