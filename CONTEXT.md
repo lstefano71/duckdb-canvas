@@ -4,7 +4,7 @@
 A single tldraw shape containing a SQL query editor and its result datatable side by side. The atomic unit of computation on the canvas. Replaces the earlier QueryShape + ResultShape pair.
 
 ## ChartCell
-A separate tldraw shape that visualises the output of a QueryCell using Observable Plot. References a QueryCell by its view name. Not yet implemented.
+A separate tldraw shape that visualises the output of a QueryCell using Observable Plot. Contains a code panel (left, hideable) and a chart render panel (right, always visible). References its source QueryCell via `sourceShapeId`. Spawned from the QueryCell's result header. A cosmetic arrow connects the two shapes but the data link is the `sourceShapeId` prop.
 
 ## Split Ratio
 A number (0.0–1.0) defining how much of a QueryCell's width is allocated to the query panel. Persisted in shape props. Default: 0.4.

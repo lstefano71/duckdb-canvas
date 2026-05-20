@@ -1,4 +1,4 @@
-import type { TLBaseShape } from 'tldraw'
+import type { TLBaseShape, TLShapeId } from 'tldraw'
 
 export type ColumnInfo = {
   name: string
@@ -20,11 +20,24 @@ export type QueryCellProps = {
   error: string | null
 }
 
+export type ChartCellProps = {
+  w: number
+  h: number
+  code: string
+  sourceShapeId: TLShapeId | null
+  codeVisible: boolean
+  splitRatio: number
+  paused: boolean
+  error: string | null
+}
+
 // Register custom shape types with tldraw's type system
 declare module '@tldraw/tlschema' {
   interface TLGlobalShapePropsMap {
     querycell: QueryCellProps
+    chartcell: ChartCellProps
   }
 }
 
 export type QueryCellShape = TLBaseShape<'querycell', QueryCellProps>
+export type ChartCellShape = TLBaseShape<'chartcell', ChartCellProps>

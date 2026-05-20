@@ -1,4 +1,4 @@
-import { useEditor } from 'tldraw'
+import { useEditor, createShapeId } from 'tldraw'
 import { useCallback, useRef, useEffect, useState } from 'react'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
@@ -7,7 +7,7 @@ import { sql, PostgreSQL } from '@codemirror/lang-sql'
 import { Coordinator, wasmConnector } from '@uwdata/mosaic-core'
 import { datatable } from '../vendor/quak'
 import { ensureWasmReady, executeAndMaterialize } from '../lib/duckdb-client'
-import type { QueryCellShape } from './types'
+import type { QueryCellShape, ChartCellShape } from './types'
 
 const stopProp = (e: React.PointerEvent) => e.stopPropagation()
 
@@ -255,6 +255,72 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
     }
   }, [editor, shape.id, shape.props.sql, shape.props.mode, shape.props.viewName, shape.props.dataVersion])
 
+  const spawnChart = useCallback(() => {
+    const gap = 20
+    // Find existing ChartCells connected to this QueryCell
+    const allShapes = editor.getCurrentPageShapes()
+    const siblings = allShapes.filter(
+      (s) => s.type === 'chartcell' && (s.props as any).sourceShapeId === shape.id
+    )
+    // Place to the right of the QueryCell
+    const baseX = shape.x + shape.props.w + gap
+    let baseY = shape.y
+    if (siblings.length > 0) {
+      // Stack below the last sibling
+      const lastSibling = siblings.reduce((a, b) =>
+        (a.y + (a.props as any).h) > (b.y + (b.props as any).h) ? a : b
+      )
+      baseY = lastSibling.y + (lastSibling.props as any).h + gap
+    }
+
+    const chartId = createShapeId()
+    editor.createShape<ChartCellShape>({
+      id: chartId,
+      type: 'chartcell',
+      x: baseX,
+      y: baseY,
+      props: {
+        sourceShapeId: shape.id,
+      },
+    })
+
+    // Create cosmetic arrow
+    const arrowId = createShapeId()
+    editor.createShape({
+      id: arrowId,
+      type: 'arrow',
+      props: {
+        start: { x: shape.props.w, y: shape.props.h / 2 },
+        end: { x: baseX - shape.x, y: baseY - shape.y + 250 },
+      },
+    })
+    // Bind arrow to shapes
+    editor.createBinding({
+      type: 'arrow',
+      fromId: arrowId,
+      toId: shape.id,
+      props: {
+        terminal: 'start',
+        normalizedAnchor: { x: 1, y: 0.5 },
+        isExact: false,
+        isPrecise: false,
+      },
+    })
+    editor.createBinding({
+      type: 'arrow',
+      fromId: arrowId,
+      toId: chartId,
+      props: {
+        terminal: 'end',
+        normalizedAnchor: { x: 0, y: 0.5 },
+        isExact: false,
+        isPrecise: false,
+      },
+    })
+
+    editor.select(chartId)
+  }, [editor, shape])
+
   // Mount quak datatable
   useEffect(() => {
     if (!shape.props.viewName || shape.props.error) return
@@ -340,6 +406,11 @@ function ResultPanel({ shape, width, height, showExpandButton }: {
             : 'No results yet'}
         </span>
         <span style={{ flex: 1 }} />
+        {shape.props.viewName && (
+          <button onPointerDown={stopProp} onClick={spawnChart} style={toolbarBtnStyle('#f1f3f5')} title="New chart">
+            📊
+          </button>
+        )}
         {shape.props.viewName && (
           <button onPointerDown={stopProp} onClick={handleRefresh} style={toolbarBtnStyle('#f1f3f5')} title="Refresh">
             ↻

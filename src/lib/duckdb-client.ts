@@ -201,3 +201,32 @@ export async function executeAndMaterialize(
 
   return { viewName, rowCount, columns }
 }
+
+/**
+ * Get columnar data from a named DuckDB view/table.
+ * Returns an object where keys are column names and values are typed arrays
+ * (or regular arrays for strings). Also returns a `columns` array of names.
+ */
+export async function getColumnarData(viewName: string): Promise<{
+  data: Record<string, ArrayLike<unknown>>
+  columns: string[]
+}> {
+  await initDuckDBWasm()
+  if (!conn) throw new Error('DuckDB WASM not initialized')
+
+  const result = await conn.query(`SELECT * FROM "${viewName}"`)
+  const schema = result.schema.fields
+  const columns = schema.map((f: any) => f.name)
+  const data: Record<string, ArrayLike<unknown>> = {}
+
+  for (let i = 0; i < schema.length; i++) {
+    const col = result.getChildAt(i)
+    if (col) {
+      data[schema[i].name] = col.toArray()
+    } else {
+      data[schema[i].name] = []
+    }
+  }
+
+  return { data, columns }
+}
