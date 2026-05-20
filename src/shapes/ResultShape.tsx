@@ -15,10 +15,12 @@ export class ResultShapeUtil extends ShapeUtil<ResultShape> {
   getDefaultProps(): ResultShapeProps {
     return {
       w: 600,
-      h: 350,
+      h: 400,
       columns: [],
       rowCount: 0,
       dataKey: null,
+      viewName: null,
+      dataVersion: 0,
       error: null,
     }
   }

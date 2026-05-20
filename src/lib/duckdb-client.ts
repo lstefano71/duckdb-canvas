@@ -9,6 +9,18 @@ let conn: duckdb.AsyncDuckDBConnection | null = null
 let wasmInitialized = false
 let wasmInitFailed = false
 let quackAvailable = false
+let initPromise: Promise<void> | null = null
+
+/** Expose the raw DuckDB-WASM instances for Mosaic/quak integration */
+export function getDuckDBInstances() {
+  return { db, conn }
+}
+
+/** Ensure DuckDB-WASM is initialized (call before using getDuckDBInstances) */
+export async function ensureWasmReady() {
+  await initDuckDBWasm()
+  return { db, conn, wasmInitialized, wasmInitFailed }
+}
 
 export interface QueryResult {
   columns: Array<{ name: string; type: string }>
@@ -30,7 +42,12 @@ const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
 
 async function initDuckDBWasm() {
   if (wasmInitialized || wasmInitFailed) return
+  if (initPromise) return initPromise
+  initPromise = doInit()
+  return initPromise
+}
 
+async function doInit() {
   try {
     const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
     const worker = new Worker(bundle.mainWorker!, { type: 'module' })
@@ -42,14 +59,13 @@ async function initDuckDBWasm() {
 
     // Try to load quack and attach remote server with auth token
     try {
-      // Fetch the auth token from the server
       const tokenRes = await fetch('/api/quack-token')
       if (!tokenRes.ok) throw new Error('Token endpoint not available')
       const { token, uri } = await tokenRes.json()
 
       await conn.query(`INSTALL quack FROM core_nightly`)
       await conn.query(`LOAD quack`)
-      await conn.query(`ATTACH '${uri}' AS remote (TOKEN '${token}')`)
+      await conn.query(`ATTACH IF NOT EXISTS '${uri}' AS remote (TOKEN '${token}')`)
       quackAvailable = true
       console.log('[duckdb-wasm] Connected to remote via Quack')
     } catch (err) {
@@ -119,4 +135,69 @@ function arrowToResult(result: any): QueryResult {
   }
 
   return { columns, data, rowCount }
+}
+
+let materializeCounter = 0
+
+/**
+ * Execute a query and materialize the result as a named view in DuckDB-WASM.
+ * Returns the view name that quak can query via Mosaic.
+ */
+export async function executeAndMaterialize(
+  sqlText: string,
+  mode: 'server' | 'local',
+  existingViewName?: string
+): Promise<{ viewName: string; rowCount: number; columns: Array<{ name: string; type: string }> }> {
+  await initDuckDBWasm()
+  if (!conn) throw new Error('DuckDB WASM failed to initialize')
+
+  const viewName = existingViewName || `quak_result_${materializeCounter++}`
+  const cleanSql = sqlText.replace(/;\s*$/, '').trim()
+
+  // Create the view/table in DuckDB-WASM
+  if (mode === 'server' && quackAvailable) {
+    // Route through Quack — materialize remote result locally
+    const escapedSql = cleanSql.replace(/'/g, "''")
+    await conn.query(`DROP TABLE IF EXISTS "${viewName}"`)
+    await conn.query(`CREATE TABLE "${viewName}" AS (SELECT * FROM remote.query('${escapedSql}'))`)
+  } else if (mode === 'server') {
+    // REST fallback: fetch data from server and materialize locally
+    const res = await fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: cleanSql }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(err.error || `Server error: ${res.status}`)
+    }
+    const result = await res.json()
+    // Create table from REST result
+    const colDefs = result.columns.map((c: any) => `"${c.name}" VARCHAR`).join(', ')
+    await conn.query(`CREATE OR REPLACE TABLE "${viewName}" (${colDefs})`)
+    for (let row = 0; row < result.rowCount; row++) {
+      const vals = result.columns.map((_: any, i: number) => {
+        const v = result.data[i][row]
+        return v === null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`
+      }).join(', ')
+      await conn.query(`INSERT INTO "${viewName}" VALUES (${vals})`)
+    }
+  } else {
+    // Local mode
+    await conn.query(`CREATE OR REPLACE VIEW "${viewName}" AS (${cleanSql})`)
+  }
+
+  // Get row count
+  const countResult = await conn.query(`SELECT count(*)::INTEGER as cnt FROM "${viewName}"`)
+  const rowCount = Number(countResult.toArray()[0]?.cnt ?? 0)
+
+  // Get schema
+  const schemaResult = await conn.query(`DESCRIBE "${viewName}"`)
+  const schemaRows = schemaResult.toArray()
+  const columns = schemaRows.map((r: any) => ({
+    name: r.column_name,
+    type: r.column_type,
+  }))
+
+  return { viewName, rowCount, columns }
 }

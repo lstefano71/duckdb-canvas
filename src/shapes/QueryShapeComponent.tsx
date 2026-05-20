@@ -4,7 +4,6 @@ import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
 import { sql, PostgreSQL } from '@codemirror/lang-sql'
-import { executeQuery } from '../lib/duckdb-client'
 import { spawnResultShape } from '../lib/spawn-result'
 import type { QueryShape } from './types'
 
@@ -56,16 +55,24 @@ export function QueryShapeComponent({ shape }: { shape: QueryShape }) {
     return () => view.destroy()
   }, [])
 
+  const [running, setRunning] = useState(false)
+
   const handleRun = useCallback(async () => {
+    if (running) return
     const currentSql = cmViewRef.current?.state.doc.toString() || shape.props.sql
+    editor.updateShape<QueryShape>({
+      id: shape.id,
+      type: 'query',
+      props: { sql: currentSql },
+    })
+    setRunning(true)
     try {
-      const result = await executeQuery(currentSql, mode)
-      spawnResultShape(editor, shape, result)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      spawnResultShape(editor, shape, { error: message, columns: [], data: [], rowCount: 0 })
+      const updatedShape = editor.getShape(shape.id) as QueryShape
+      await spawnResultShape(editor, updatedShape)
+    } finally {
+      setRunning(false)
     }
-  }, [editor, shape, mode])
+  }, [editor, shape.id, running])
 
   // Keep ref in sync for Ctrl+Enter handler
   useEffect(() => {
@@ -131,18 +138,20 @@ export function QueryShapeComponent({ shape }: { shape: QueryShape }) {
         </button>
         <button
           onClick={handleRun}
+          disabled={running}
           style={{
             padding: '2px 10px',
             borderRadius: 4,
             border: '1px solid #ced4da',
-            background: '#e7f5ff',
+            background: running ? '#fff3bf' : '#e7f5ff',
             color: '#212529',
             fontSize: 11,
             fontWeight: 600,
-            cursor: 'pointer',
+            cursor: running ? 'wait' : 'pointer',
+            opacity: running ? 0.7 : 1,
           }}
         >
-          ▶ Run
+          {running ? '⏳ Running…' : '▶ Run'}
         </button>
         <span style={{ color: '#868e96', fontSize: 10, marginLeft: 'auto' }}>
           {isEditing ? 'Ctrl+Enter to run' : 'Double-click to edit'}

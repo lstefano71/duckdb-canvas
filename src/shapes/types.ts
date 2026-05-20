@@ -29,6 +29,8 @@ export type ResultShapeProps = {
   columns: ColumnInfo[]
   rowCount: number
   dataKey: string | null
+  viewName: string | null
+  dataVersion: number
   error: string | null
 }
 

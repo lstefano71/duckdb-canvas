@@ -1,109 +1,192 @@
 import type { Editor } from 'tldraw'
 import { createShapeId } from 'tldraw'
 import type { QueryShape, ResultShape } from '../shapes/types'
-import type { QueryResult } from './duckdb-client'
-import { storeResultData, deleteResultData } from './result-store'
+import { executeAndMaterialize } from './duckdb-client'
 
-export function spawnResultShape(
+export async function spawnResultShape(
   editor: Editor,
   queryShape: QueryShape,
-  result: QueryResult & { error?: string }
 ) {
+  const sqlText = queryShape.props.sql
+  const mode = queryShape.props.mode
   const existingResultId = queryShape.props.resultShapeId
 
-  // Store columnar data outside of tldraw
-  let dataKey: string | null = null
-  if (!result.error && result.data.length > 0) {
-    dataKey = storeResultData(result.data)
-  }
-
+  // Get existing view name to reuse it
+  let existingViewName: string | undefined
   if (existingResultId) {
-    // Update existing result shape
     const existing = editor.getShape(existingResultId as any) as ResultShape | undefined
-    if (existing) {
-      // Clean up old data
-      if (existing.props?.dataKey) deleteResultData(existing.props.dataKey)
-
-      editor.updateShape({
-        id: existingResultId as any,
-        type: 'result',
-        props: {
-          columns: result.columns,
-          rowCount: result.rowCount,
-          dataKey,
-          error: result.error || null,
-        },
-      })
-      return
+    if (existing?.props.viewName) {
+      existingViewName = existing.props.viewName
     }
   }
 
-  // Spawn a new result shape to the right of the query shape
-  const resultId = createShapeId()
-  const arrowId = createShapeId()
-  const offsetX = queryShape.props.w + 80
+  try {
+    const { viewName, rowCount, columns } = await executeAndMaterialize(sqlText, mode, existingViewName)
 
-  editor.createShape({
-    id: resultId,
-    type: 'result',
-    x: queryShape.x + offsetX,
-    y: queryShape.y,
-    props: {
-      w: 600,
-      h: 350,
-      columns: result.columns,
-      rowCount: result.rowCount,
-      dataKey,
-      error: result.error || null,
-    },
-  })
+    if (existingResultId) {
+      const existing = editor.getShape(existingResultId as any) as ResultShape | undefined
+      if (existing) {
+        editor.updateShape({
+          id: existingResultId as any,
+          type: 'result',
+          props: {
+            columns,
+            rowCount,
+            viewName,
+            dataKey: null,
+            dataVersion: (existing.props.dataVersion || 0) + 1,
+            error: null,
+          },
+        })
+        return
+      }
+    }
 
-  // Create a curved arrow shape
-  editor.createShape({
-    id: arrowId,
-    type: 'arrow',
-    x: queryShape.x + queryShape.props.w,
-    y: queryShape.y + queryShape.props.h / 2,
-    props: {
-      kind: 'arc',
-      bend: -30,
-      arrowheadStart: 'none',
-      arrowheadEnd: 'arrow',
-    },
-  })
+    // Spawn new result shape
+    const resultId = createShapeId()
+    const arrowId = createShapeId()
+    const offsetX = queryShape.props.w + 80
 
-  // Bind the arrow to both shapes
-  editor.createBindings([
-    {
-      type: 'arrow',
-      fromId: arrowId,
-      toId: queryShape.id,
+    editor.createShape({
+      id: resultId,
+      type: 'result',
+      x: queryShape.x + offsetX,
+      y: queryShape.y,
       props: {
-        terminal: 'start',
-        normalizedAnchor: { x: 1, y: 0.5 },
-        isPrecise: true,
-        isExact: false,
-        snap: 'none',
+        w: 600,
+        h: 400,
+        columns,
+        rowCount,
+        viewName,
+        dataKey: null,
+        dataVersion: 0,
+        error: null,
       },
-    },
-    {
-      type: 'arrow',
-      fromId: arrowId,
-      toId: resultId,
-      props: {
-        terminal: 'end',
-        normalizedAnchor: { x: 0, y: 0.5 },
-        isPrecise: true,
-        isExact: false,
-        snap: 'none',
-      },
-    },
-  ])
+    })
 
-  // Link the query to its result
-  editor.updateShape<QueryShape>({
-    id: queryShape.id,
-    type: 'query',
-    props: { resultShapeId: resultId as unknown as string },
-  })
+    editor.createShape({
+      id: arrowId,
+      type: 'arrow',
+      x: queryShape.x + queryShape.props.w,
+      y: queryShape.y + queryShape.props.h / 2,
+      props: {
+        kind: 'arc',
+        bend: -30,
+        arrowheadStart: 'none',
+        arrowheadEnd: 'arrow',
+      },
+    })
+
+    editor.createBindings([
+      {
+        type: 'arrow',
+        fromId: arrowId,
+        toId: queryShape.id,
+        props: {
+          terminal: 'start',
+          normalizedAnchor: { x: 1, y: 0.5 },
+          isPrecise: true,
+          isExact: false,
+          snap: 'none',
+        },
+      },
+      {
+        type: 'arrow',
+        fromId: arrowId,
+        toId: resultId,
+        props: {
+          terminal: 'end',
+          normalizedAnchor: { x: 0, y: 0.5 },
+          isPrecise: true,
+          isExact: false,
+          snap: 'none',
+        },
+      },
+    ])
+
+    editor.updateShape<QueryShape>({
+      id: queryShape.id,
+      type: 'query',
+      props: { resultShapeId: resultId as unknown as string },
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+
+    if (existingResultId) {
+      editor.updateShape({
+        id: existingResultId as any,
+        type: 'result',
+        props: { error: message },
+      })
+      return
+    }
+
+    // Spawn error result
+    const resultId = createShapeId()
+    const arrowId = createShapeId()
+    const offsetX = queryShape.props.w + 80
+
+    editor.createShape({
+      id: resultId,
+      type: 'result',
+      x: queryShape.x + offsetX,
+      y: queryShape.y,
+      props: {
+        w: 600,
+        h: 200,
+        columns: [],
+        rowCount: 0,
+        viewName: null,
+        dataKey: null,
+        dataVersion: 0,
+        error: message,
+      },
+    })
+
+    editor.createShape({
+      id: arrowId,
+      type: 'arrow',
+      x: queryShape.x + queryShape.props.w,
+      y: queryShape.y + queryShape.props.h / 2,
+      props: {
+        kind: 'arc',
+        bend: -30,
+        arrowheadStart: 'none',
+        arrowheadEnd: 'arrow',
+      },
+    })
+
+    editor.createBindings([
+      {
+        type: 'arrow',
+        fromId: arrowId,
+        toId: queryShape.id,
+        props: {
+          terminal: 'start',
+          normalizedAnchor: { x: 1, y: 0.5 },
+          isPrecise: true,
+          isExact: false,
+          snap: 'none',
+        },
+      },
+      {
+        type: 'arrow',
+        fromId: arrowId,
+        toId: resultId,
+        props: {
+          terminal: 'end',
+          normalizedAnchor: { x: 0, y: 0.5 },
+          isPrecise: true,
+          isExact: false,
+          snap: 'none',
+        },
+      },
+    ])
+
+    editor.updateShape<QueryShape>({
+      id: queryShape.id,
+      type: 'query',
+      props: { resultShapeId: resultId as unknown as string },
+    })
+  }
 }
