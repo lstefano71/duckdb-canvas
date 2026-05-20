@@ -1,4 +1,4 @@
-import { useEditor } from 'tldraw'
+import { useEditor, createShapeId } from 'tldraw'
 import {
   DefaultContextMenu,
   TLUiContextMenuProps,
@@ -30,9 +30,17 @@ function CanvasMenuItems() {
     <MenuGroup id="canvas-actions">
       <MenuItem
         id="add-query"
-        label="+ Query"
+        label="New Query"
         onSelect={() => {
-          editor.setCurrentTool('query')
+          const { x, y } = editor.inputs.currentPagePoint
+          const id = createShapeId()
+          editor.createShape({
+            id,
+            type: 'querycell',
+            x,
+            y,
+          })
+          editor.select(id)
         }}
         readonlyOk
       />

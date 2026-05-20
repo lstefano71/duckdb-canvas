@@ -85,6 +85,7 @@ function CodePanel({ shape, width, height }: {
       extensions: [
         basicSetup,
         javascript(),
+        EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newCode = update.state.doc.toString()
@@ -212,6 +213,8 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
     const container = containerRef.current
     if (!container) return
 
+    setLocalError(null)
+
     try {
       const { data: columnar, columns } = await getColumnarData(sourceViewName)
       const rowCount = columns.length > 0 ? (columnar[columns[0]] as ArrayLike<unknown>).length : 0
@@ -338,19 +341,23 @@ function ChartPanel({ shape, width, height, showExpandButton }: {
           </pre>
         </div>
       )}
-      {/* Chart render */}
-      {!displayError && (
-        <div
-          ref={containerRef}
-          style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onPointerDown={(e) => {
-            if (!editor.getSelectedShapeIds().includes(shape.id)) {
-              editor.select(shape.id)
-            }
-            e.stopPropagation()
-          }}
-        />
-      )}
+      {/* Chart render — always mounted so containerRef stays valid */}
+      <div
+        ref={containerRef}
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          display: displayError ? 'none' : 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        onPointerDown={(e) => {
+          if (!editor.getSelectedShapeIds().includes(shape.id)) {
+            editor.select(shape.id)
+          }
+          e.stopPropagation()
+        }}
+      />
     </div>
   )
 }

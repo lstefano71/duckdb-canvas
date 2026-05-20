@@ -82,6 +82,8 @@ function QueryPanel({ shape, width, height }: {
           '.cm-gutters': { backgroundColor: '#f8f9fa', borderRight: '1px solid #dee2e6' },
           '.cm-activeLineGutter': { backgroundColor: '#e9ecef' },
           '.cm-activeLine': { backgroundColor: '#f1f3f5' },
+          '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#d0e8ff !important' },
+          '&.cm-focused .cm-cursor': { borderLeftColor: '#333' },
         }),
         Prec.highest(keymap.of([{
           key: 'Ctrl-Enter',

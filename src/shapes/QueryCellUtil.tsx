@@ -10,7 +10,7 @@ export class QueryCellUtil extends ShapeUtil<QueryCellShape> {
       w: 1000,
       h: 400,
       sql: 'SELECT 42 AS answer',
-      mode: 'local',
+      mode: 'server',
       queryVisible: true,
       splitRatio: 0.4,
       viewName: null,
