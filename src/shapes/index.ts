@@ -1,4 +1,3 @@
-import { QueryShapeUtil } from './QueryShape'
-import { ResultShapeUtil } from './ResultShape'
+import { QueryCellUtil } from './QueryCellUtil'
 
-export const customShapes = [QueryShapeUtil, ResultShapeUtil]
+export const customShapes = [QueryCellUtil]

@@ -9,19 +9,13 @@ export class QueryTool extends StateNode {
 
     this.editor.createShape({
       id,
-      type: 'query',
+      type: 'querycell',
       x: currentPagePoint.x,
       y: currentPagePoint.y,
-      props: {
-        w: 500,
-        h: 300,
-        sql: 'SELECT 1 AS hello;',
-        mode: 'server',
-        resultShapeId: null,
-      },
     })
 
     this.editor.select(id)
+    this.editor.setEditingShape(id)
     this.editor.setCurrentTool('select')
   }
 }
